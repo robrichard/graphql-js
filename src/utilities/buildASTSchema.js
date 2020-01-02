@@ -12,7 +12,11 @@ import { assertValidSDL } from '../validation/validate';
 
 import type { GraphQLSchemaValidationOptions } from '../type/schema';
 import { GraphQLSchema } from '../type/schema';
-import { specifiedDirectives } from '../type/directives';
+import {
+  specifiedDirectives,
+  GraphQLDeferDirective,
+  GraphQLStreamDirective,
+} from '../type/directives';
 
 import { extendSchemaImpl } from './extendSchema';
 
@@ -101,6 +105,14 @@ export function buildASTSchema(
     if (directives.every((directive) => directive.name !== stdDirective.name)) {
       directives.push(stdDirective);
     }
+  }
+
+  if (!directives.some((directive) => directive.name === 'defer')) {
+    directives.push(GraphQLDeferDirective);
+  }
+
+  if (!directives.some((directive) => directive.name === 'stream')) {
+    directives.push(GraphQLStreamDirective);
   }
 
   return new GraphQLSchema(config);
