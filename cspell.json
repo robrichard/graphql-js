@@ -31,11 +31,6 @@
     "subcommand",
     "transpilation",
     "instanceof",
-    "jsutils",
-    "tsutils",
-    "noflow",
-    "flowlint",
-    "camelcase",
 
     // Different names used inside tests
     "Skywalker",
