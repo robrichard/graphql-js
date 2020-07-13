@@ -83,10 +83,10 @@ export interface ExecutionPatchResult<
 > {
   errors?: ReadonlyArray<GraphQLError>;
   data?: TData | null;
-  extensions?: TExtensions;
-  path: ReadonlyArray<string | number>;
+  path?: ReadonlyArray<string | number>;
   label?: string;
-  hasNext?: boolean;
+  extensions?: TExtensions;
+  hasNext: boolean;
 }
 
 export type AsyncExecutionResult = ExecutionResult | ExecutionPatchResult;
