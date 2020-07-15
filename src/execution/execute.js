@@ -113,25 +113,26 @@ export type ExecutionContext = {|
   dispatcher: Dispatcher,
 |};
 
-export type FormattedExecutionResult = {|
-  errors?: $ReadOnlyArray<GraphQLFormattedError>,
-  data?: ObjMap<mixed> | null,
-  extensions?: ObjMap<mixed>,
-|};
-
 /**
  * The result of GraphQL execution.
  *
  *   - `errors` is included when any errors occurred as a non-empty array.
  *   - `data` is the result of a successful execution of the query.
- *   - `extensions` is reserved for adding non-standard properties.
  *   - `hasNext` is true if a future payload is expected.
+ *   - `extensions` is reserved for adding non-standard properties.
  */
 export type ExecutionResult = {|
   errors?: $ReadOnlyArray<GraphQLError>,
   data?: ObjMap<mixed> | null,
-  extensions?: ObjMap<mixed>,
   hasNext?: boolean,
+  extensions?: ObjMap<mixed>,
+|};
+
+export type FormattedExecutionResult = {|
+  errors?: $ReadOnlyArray<GraphQLFormattedError>,
+  data?: ObjMap<mixed> | null,
+  hasNext?: boolean,
+  extensions?: ObjMap<mixed>,
 |};
 
 /**
@@ -141,16 +142,16 @@ export type ExecutionResult = {|
  *   - `data` is the result of the additional asynchronous data.
  *   - `path` is the location of data.
  *   - `label` is the label provided to @defer or @stream.
- *   - `extensions` is reserved for adding non-standard properties.
  *   - `hasNext` is true if a future payload is expected.
+ *   - `extensions` is reserved for adding non-standard properties.
  */
 export type ExecutionPatchResult = {|
   errors?: $ReadOnlyArray<GraphQLError>,
   data?: ObjMap<mixed> | mixed | null,
   path?: $ReadOnlyArray<string | number>,
   label?: string,
-  extensions?: ObjMap<mixed>,
   hasNext: boolean,
+  extensions?: ObjMap<mixed>,
 |};
 
 export type AsyncExecutionResult = ExecutionResult | ExecutionPatchResult;
