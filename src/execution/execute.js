@@ -1145,76 +1145,72 @@ function completeValue(
 
 function completeAsyncIterableValue(
   exeContext: ExecutionContext,
-  returnType: GraphQLList<GraphQLOutputType>,
+  itemType: GraphQLOutputType,
   fieldNodes: $ReadOnlyArray<FieldNode>,
   info: GraphQLResolveInfo,
   path: Path,
-  result: AsyncIterable<mixed>,
+  index: number,
+  completedResults: Array<mixed>,
+  iterator: AsyncIterator<mixed>,
   errors?: Array<GraphQLError>,
 ): Promise<$ReadOnlyArray<mixed>> {
-  // $FlowFixMe
-  const iteratorMethod = result[SYMBOL_ASYNC_ITERATOR];
-  const iterator = iteratorMethod.call(result);
-
-  const completedResults = [];
-  let index = 0;
-
-  const itemType = returnType.ofType;
-
+  const fieldPath = addPath(path, index);
   const stream = getStreamValues(exeContext, fieldNodes);
-
-  const handleNext = () => {
-    const fieldPath = addPath(path, index);
-    return iterator.next().then(
-      ({ value, done }) => {
-        if (done) {
-          return;
-        }
-        completedResults.push(
-          completeValue(
-            exeContext,
-            itemType,
-            fieldNodes,
-            info,
-            fieldPath,
-            value,
-            errors,
-          ),
-        );
-        index++;
-        if (
-          stream &&
-          typeof stream.initialCount === 'number' &&
-          index >= stream.initialCount
-        ) {
-          exeContext.dispatcher.addAsyncIterable(
-            stream.label,
-            index,
-            path,
-            result,
-            exeContext,
-            fieldNodes,
-            info,
-            itemType,
-          );
-          return;
-        }
-        return handleNext();
-      },
-      (error) =>
-        handleFieldError(
-          error,
-          fieldNodes,
-          fieldPath,
-          itemType,
+  return iterator.next().then(
+    ({ value, done }) => {
+      if (done) {
+        return completedResults;
+      }
+      completedResults.push(
+        completeValue(
           exeContext,
+          itemType,
+          fieldNodes,
+          info,
+          fieldPath,
+          value,
           errors,
         ),
-    );
-  };
+      );
 
-  return handleNext().then(() => completedResults);
+      const newIndex = index + 1;
+      if (
+        stream &&
+        typeof stream.initialCount === 'number' &&
+        newIndex >= stream.initialCount
+      ) {
+        exeContext.dispatcher.addAsyncIteratorValue(
+          stream.label,
+          index + 1,
+          path,
+          iterator,
+          exeContext,
+          fieldNodes,
+          info,
+          itemType,
+        );
+        return completedResults;
+      }
+
+      return completeAsyncIterableValue(
+        exeContext,
+        itemType,
+        fieldNodes,
+        info,
+        path,
+        newIndex,
+        completedResults,
+        iterator,
+      );
+    },
+    (error) => {
+      completedResults.push(null);
+      handleFieldError(error, fieldNodes, fieldPath, itemType, exeContext);
+      return completedResults;
+    },
+  );
 }
+
 /**
  * Complete a list value by completing each item in the list with the
  * inner type
@@ -1228,14 +1224,21 @@ function completeListValue(
   result: mixed,
   errors?: Array<GraphQLError>,
 ): PromiseOrValue<$ReadOnlyArray<mixed>> {
+  const itemType = returnType.ofType;
+
   if (isAsyncIterable(result)) {
+    const iteratorMethod = result[SYMBOL_ASYNC_ITERATOR];
+    const iterator = iteratorMethod.call(result);
+
     return completeAsyncIterableValue(
       exeContext,
-      returnType,
+      itemType,
       fieldNodes,
       info,
       path,
-      result,
+      0,
+      [],
+      iterator,
       errors,
     );
   }
@@ -1250,7 +1253,6 @@ function completeListValue(
 
   // This is specified as a simple map, however we're optimizing the path
   // where the list contains no Promises by avoiding creating another Promise.
-  const itemType = returnType.ofType;
   let containsPromise = false;
   const completedResults = arrayFrom(result, (item, index) => {
     // No need to modify the info object containing the path,
@@ -1685,68 +1687,68 @@ export class Dispatcher {
     );
   }
 
-  addAsyncIterable(
+  addAsyncIteratorValue(
     label?: string,
-    nextIndex: number,
+    index: number,
     path?: Path,
-    result: AsyncIterable<mixed>,
+    iterator: AsyncIterator<mixed>,
     exeContext: ExecutionContext,
     fieldNodes: $ReadOnlyArray<FieldNode>,
     info: GraphQLResolveInfo,
     itemType: GraphQLOutputType,
   ): void {
-    // $FlowFixMe
-    const iteratorMethod = result[SYMBOL_ASYNC_ITERATOR];
-    const iterator = iteratorMethod.call(result);
-    let index = nextIndex;
-    const handleNext = () => {
-      const fieldPath = addPath(path, index);
-      const patchErrors = [];
-      this._subsequentPayloads.push(
-        iterator.next().then(
-          ({ value: data, done }) => {
-            if (done && !data) {
-              return { value: undefined, done };
-            }
-            index++;
-            handleNext();
-            return {
-              value: createPatchResult(
-                completeValue(
-                  exeContext,
-                  itemType,
-                  fieldNodes,
-                  info,
-                  fieldPath,
-                  data,
-                  patchErrors,
-                ),
-                label,
+    const fieldPath = addPath(path, index);
+    const patchErrors = [];
+    this._subsequentPayloads.push(
+      iterator.next().then(
+        ({ value: data, done }) => {
+          if (done) {
+            return { value: undefined, done: true };
+          }
+          this.addAsyncIteratorValue(
+            label,
+            index + 1,
+            path,
+            iterator,
+            exeContext,
+            fieldNodes,
+            info,
+            itemType,
+          );
+          return {
+            value: createPatchResult(
+              completeValue(
+                exeContext,
+                itemType,
+                fieldNodes,
+                info,
                 fieldPath,
+                data,
                 patchErrors,
               ),
-              done,
-            };
-          },
-          (error) => {
-            handleFieldError(
-              error,
-              fieldNodes,
+              label,
               fieldPath,
-              itemType,
-              exeContext,
               patchErrors,
-            );
-            return {
-              value: createPatchResult(null, label, fieldPath, patchErrors),
-              done: false,
-            };
-          },
-        ),
-      );
-    };
-
-    return handleNext();
+            ),
+            done: false,
+          };
+        },
+        (error) => {
+          handleFieldError(
+            error,
+            fieldNodes,
+            fieldPath,
+            itemType,
+            exeContext,
+            patchErrors,
+          );
+          return {
+            value: createPatchResult(null, label, fieldPath, patchErrors),
+            done: false,
+          };
+        },
+      ),
+    );
   }
 
   _race(): Promise<IteratorResult<ExecutionPatchResult, void>> {
