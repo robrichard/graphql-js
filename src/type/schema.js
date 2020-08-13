@@ -182,6 +182,15 @@ export class GraphQLSchema {
       }
     }
 
+    if (config.experimentalStream === true) {
+      this.__experimentalStream = true;
+      if (!this._directives.some((directive) => directive.name === 'stream')) {
+        this._directives = [].concat(this._directives, [
+          GraphQLStreamDirective,
+        ]);
+      }
+    }
+
     // To preserve order of user-provided types, we add first to add them to
     // the set of "collected" types, so `collectReferencedTypes` ignore them.
     const allReferencedTypes: Set<GraphQLNamedType> = new Set(config.types);

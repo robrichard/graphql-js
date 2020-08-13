@@ -10,7 +10,11 @@ import { assertValidSDL } from '../validation/validate';
 
 import type { GraphQLSchemaValidationOptions } from '../type/schema';
 import { GraphQLSchema } from '../type/schema';
-import { specifiedDirectives, GraphQLDeferDirective } from '../type/directives';
+import {
+  specifiedDirectives,
+  GraphQLDeferDirective,
+  GraphQLStreamDirective,
+} from '../type/directives';
 
 import { extendSchemaImpl } from './extendSchema';
 
@@ -109,6 +113,14 @@ export function buildASTSchema(
     directives.push(GraphQLDeferDirective);
   }
 
+  if (
+    options &&
+    options.experimentalStream === true &&
+    !directives.some((directive) => directive.name === 'stream')
+  ) {
+    directives.push(GraphQLStreamDirective);
+  }
+
   return new GraphQLSchema(config);
 }
 
@@ -133,5 +145,6 @@ export function buildSchema(
     assumeValidSDL: options?.assumeValidSDL,
     assumeValid: options?.assumeValid,
     experimentalDefer: options?.experimentalDefer,
+    experimentalStream: options?.experimentalStream,
   });
 }

@@ -233,6 +233,7 @@ export function extendSchemaImpl(
     extensionASTNodes: schemaConfig.extensionASTNodes.concat(schemaExtensions),
     assumeValid: options?.assumeValid ?? false,
     experimentalDefer: options?.experimentalDefer ?? false,
+    experimentalStream: options?.experimentalStream ?? false,
   };
 
   // Below are functions used for producing this schema that have closed over

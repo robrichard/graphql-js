@@ -17,7 +17,7 @@ import type {
   GraphQLArgument,
   GraphQLFieldConfigArgumentMap,
 } from './definition';
-import { GraphQLString, GraphQLBoolean } from './scalars';
+import { GraphQLString, GraphQLBoolean, GraphQLInt } from './scalars';
 import { argsToArgsConfig, GraphQLNonNull } from './definition';
 
 /**
@@ -186,6 +186,30 @@ export const GraphQLDeferDirective = new GraphQLDirective({
     label: {
       type: GraphQLString,
       description: 'Unique name',
+    },
+  },
+});
+
+/**
+ * Used to conditionally defer fragments.
+ */
+export const GraphQLStreamDirective = new GraphQLDirective({
+  name: 'stream',
+  description:
+    'Directs the executor to stream plural fields when the `if` argument is true or undefined.',
+  locations: [DirectiveLocation.FIELD],
+  args: {
+    if: {
+      type: GraphQLBoolean,
+      description: 'Stream when true or undefined.',
+    },
+    label: {
+      type: GraphQLString,
+      description: 'Unique name',
+    },
+    initialCount: {
+      type: GraphQLNonNull(GraphQLInt),
+      description: 'Number of items to return immediately',
     },
   },
 });

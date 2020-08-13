@@ -53,6 +53,7 @@ import {
   GraphQLIncludeDirective,
   GraphQLSkipDirective,
   GraphQLDeferDirective,
+  GraphQLStreamDirective,
 } from '../type/directives';
 import {
   isObjectType,
@@ -736,6 +737,46 @@ function getDeferValues(
 }
 
 /**
+ * Returns an object containing the @stream arguments if a field should be
+ * streamed based on the experimental flag, stream directive present and
+ * not disabled by the "if" argument.
+ */
+function getStreamValues(
+  exeContext: ExecutionContext,
+  fieldNodes: $ReadOnlyArray<FieldNode>,
+): void | {|
+  initialCount?: number,
+  label?: string,
+|} {
+  if (exeContext.schema.__experimentalStream !== true) {
+    return;
+  }
+
+  // validation only allows equivalent streams on multiple fields, so it is
+  // safe to only check the first fieldNode for the stream directive
+  const stream = getDirectiveValues(
+    GraphQLStreamDirective,
+    fieldNodes[0],
+    exeContext.variableValues,
+  );
+
+  if (!stream) {
+    return;
+  }
+
+  if (stream.if === false) {
+    return;
+  }
+
+  return {
+    initialCount:
+      // istanbul ignore next (initialCount is required number argument)
+      typeof stream.initialCount === 'number' ? stream.initialCount : undefined,
+    label: typeof stream.label === 'string' ? stream.label : undefined,
+  };
+}
+
+/**
  * Determines if a fragment is applicable to the given type.
  */
 function doesFragmentConditionMatch(
@@ -1050,6 +1091,8 @@ function completeAsyncIteratorValue(
   errors?: Array<GraphQLError>,
 ): Promise<$ReadOnlyArray<mixed>> {
   const fieldPath = addPath(path, index, undefined);
+  const stream = getStreamValues(exeContext, fieldNodes);
+
   return iterator.next().then(
     ({ value, done }) => {
       if (done) {
@@ -1066,6 +1109,26 @@ function completeAsyncIteratorValue(
           errors,
         ),
       );
+
+      const newIndex = index + 1;
+      if (
+        stream &&
+        typeof stream.initialCount === 'number' &&
+        newIndex >= stream.initialCount
+      ) {
+        exeContext.dispatcher.addAsyncIteratorValue(
+          stream.label,
+          index + 1,
+          path,
+          iterator,
+          exeContext,
+          fieldNodes,
+          info,
+          itemType,
+        );
+        return completedResults;
+      }
+
       return completeAsyncIteratorValue(
         exeContext,
         itemType,
@@ -1130,6 +1193,8 @@ function completeListValue(
     );
   }
 
+  const stream = getStreamValues(exeContext, fieldNodes);
+
   // This is specified as a simple map, however we're optimizing the path
   // where the list contains no Promises by avoiding creating another Promise.
   let containsPromise = false;
@@ -1139,6 +1204,23 @@ function completeListValue(
     const itemPath = addPath(path, index, undefined);
     try {
       let completedItem;
+
+      if (
+        stream &&
+        typeof stream.initialCount === 'number' &&
+        index >= stream.initialCount
+      ) {
+        exeContext.dispatcher.addValue(
+          stream.label,
+          itemPath,
+          item,
+          exeContext,
+          fieldNodes,
+          info,
+          itemType,
+        );
+        return;
+      }
       if (isPromise(item)) {
         completedItem = item.then((resolved) =>
           completeValue(
@@ -1189,7 +1271,7 @@ function completeListValue(
         errors,
       );
     }
-  });
+  }).filter((val) => val !== undefined);
 
   return containsPromise ? Promise.all(completedResults) : completedResults;
 }
@@ -1579,6 +1661,112 @@ export class Dispatcher {
         value: createPatchResult(data, label, path, errors),
         done: false,
       })),
+    );
+  }
+
+  addValue(
+    label?: string,
+    path: Path,
+    promiseOrData: PromiseOrValue<ObjMap<mixed> | mixed>,
+    exeContext: ExecutionContext,
+    fieldNodes: $ReadOnlyArray<FieldNode>,
+    info: GraphQLResolveInfo,
+    itemType: GraphQLOutputType,
+  ): void {
+    const errors = [];
+    this._subsequentPayloads.push(
+      Promise.resolve(promiseOrData)
+        .then((resolved) =>
+          completeValue(
+            exeContext,
+            itemType,
+            fieldNodes,
+            info,
+            path,
+            resolved,
+            errors,
+          ),
+        )
+        // Note: we don't rely on a `catch` method, but we do expect "thenable"
+        // to take a second callback for the error case.
+        .then(undefined, (error) =>
+          handleFieldError(
+            error,
+            fieldNodes,
+            path,
+            itemType,
+            exeContext,
+            errors,
+          ),
+        )
+        .then((data) => ({
+          value: createPatchResult(data, label, path, errors),
+          done: false,
+        })),
+    );
+  }
+
+  addAsyncIteratorValue(
+    label?: string,
+    index: number,
+    path?: Path,
+    iterator: AsyncIterator<mixed>,
+    exeContext: ExecutionContext,
+    fieldNodes: $ReadOnlyArray<FieldNode>,
+    info: GraphQLResolveInfo,
+    itemType: GraphQLOutputType,
+  ): void {
+    const fieldPath = addPath(path, index);
+    const patchErrors = [];
+    this._subsequentPayloads.push(
+      iterator.next().then(
+        ({ value: data, done }) => {
+          if (done) {
+            return { value: undefined, done: true };
+          }
+          this.addAsyncIteratorValue(
+            label,
+            index + 1,
+            path,
+            iterator,
+            exeContext,
+            fieldNodes,
+            info,
+            itemType,
+          );
+          return {
+            value: createPatchResult(
+              completeValue(
+                exeContext,
+                itemType,
+                fieldNodes,
+                info,
+                fieldPath,
+                data,
+                patchErrors,
+              ),
+              label,
+              fieldPath,
+              patchErrors,
+            ),
+            done: false,
+          };
+        },
+        (error) => {
+          handleFieldError(
+            error,
+            fieldNodes,
+            fieldPath,
+            itemType,
+            exeContext,
+            patchErrors,
+          );
+          return {
+            value: createPatchResult(null, label, fieldPath, patchErrors),
+            done: false,
+          };
+        },
+      ),
     );
   }
 
