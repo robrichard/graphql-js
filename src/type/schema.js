@@ -31,6 +31,8 @@ import type {
 import { __Schema } from './introspection';
 import {
   GraphQLDirective,
+  GraphQLDeferDirective,
+  GraphQLStreamDirective,
   isDirective,
   specifiedDirectives,
 } from './directives';
@@ -141,6 +143,9 @@ export class GraphQLSchema {
 
   // Used as a cache for validateSchema().
   __validationErrors: ?$ReadOnlyArray<GraphQLError>;
+  // Referenced by execute()
+  __experimentalDefer: ?boolean;
+  __experimentalStream: ?boolean;
 
   constructor(config: $ReadOnly<GraphQLSchemaConfig>): void {
     // If this schema was built from a source known to be valid, then it may be
@@ -169,6 +174,13 @@ export class GraphQLSchema {
     this._subscriptionType = config.subscription;
     // Provide specified directives (e.g. @include and @skip) by default.
     this._directives = config.directives ?? specifiedDirectives;
+
+    if (config.experimentalDefer === true) {
+      this.__experimentalDefer = true;
+      if (!this._directives.some((directive) => directive.name === 'defer')) {
+        this._directives = [].concat(this._directives, [GraphQLDeferDirective]);
+      }
+    }
 
     // To preserve order of user-provided types, we add first to add them to
     // the set of "collected" types, so `collectReferencedTypes` ignore them.
@@ -372,6 +384,30 @@ export type GraphQLSchemaValidationOptions = {|
    * Default: false
    */
   assumeValid?: boolean,
+
+  /**
+   *
+   * EXPERIMENTAL:
+   *
+   * If enabled, processed fields from fragment spreads with @defer directive
+   * are not returned from the initial query and the respective data is returned
+   * in patches after the initial result from the synchronous query.
+   *
+   * Default: false
+   */
+  experimentalDefer?: boolean,
+
+  /**
+   *
+   * EXPERIMENTAL:
+   *
+   * If enabled, items from a plural fields with @stream directive
+   * are not returned from the initial query and each item is returned
+   * in a patch after the initial result from the synchronous query.
+   *
+   * Default: false
+   */
+  experimentalStream?: boolean,
 |};
 
 export type GraphQLSchemaConfig = {|

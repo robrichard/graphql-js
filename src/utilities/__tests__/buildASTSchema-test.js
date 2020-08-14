@@ -18,6 +18,7 @@ import {
   GraphQLIncludeDirective,
   GraphQLDeprecatedDirective,
   GraphQLSpecifiedByDirective,
+  GraphQLDeferDirective,
 } from '../../type/directives';
 import {
   GraphQLID,
@@ -246,14 +247,19 @@ describe('Schema Builder', () => {
   });
 
   it('Overriding directives excludes specified', () => {
-    const schema = buildSchema(`
+    const schema = buildSchema(
+      `
       directive @skip on FIELD
       directive @include on FIELD
       directive @deprecated on FIELD_DEFINITION
       directive @specifiedBy on FIELD_DEFINITION
-    `);
-
-    expect(schema.getDirectives()).to.have.lengthOf(4);
+      directive @defer on FRAGMENT_SPREAD
+    `,
+      {
+        experimentalDefer: true,
+      },
+    );
+    expect(schema.getDirectives()).to.have.lengthOf(5);
     expect(schema.getDirective('skip')).to.not.equal(GraphQLSkipDirective);
     expect(schema.getDirective('include')).to.not.equal(
       GraphQLIncludeDirective,
@@ -264,6 +270,7 @@ describe('Schema Builder', () => {
     expect(schema.getDirective('specifiedBy')).to.not.equal(
       GraphQLSpecifiedByDirective,
     );
+    expect(schema.getDirective('defer')).to.not.equal(GraphQLDeferDirective);
   });
 
   it('Adding directives maintains @include, @skip & @specifiedBy', () => {
@@ -276,6 +283,23 @@ describe('Schema Builder', () => {
     expect(schema.getDirective('include')).to.not.equal(undefined);
     expect(schema.getDirective('deprecated')).to.not.equal(undefined);
     expect(schema.getDirective('specifiedBy')).to.not.equal(undefined);
+  });
+
+  it('Adds @defer when experimental flags are passed to schema', () => {
+    const schema = buildSchema('type Query', {
+      experimentalDefer: true,
+    });
+
+    expect(schema.getDirectives()).to.have.lengthOf(5);
+    expect(schema.getDirective('defer')).to.equal(GraphQLDeferDirective);
+    expect(schema.getDirective('skip')).to.equal(GraphQLSkipDirective);
+    expect(schema.getDirective('include')).to.equal(GraphQLIncludeDirective);
+    expect(schema.getDirective('deprecated')).to.equal(
+      GraphQLDeprecatedDirective,
+    );
+    expect(schema.getDirective('specifiedBy')).to.equal(
+      GraphQLSpecifiedByDirective,
+    );
   });
 
   it('Type modifiers', () => {

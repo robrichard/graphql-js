@@ -120,6 +120,18 @@ export interface GraphQLSchemaValidationOptions {
    * Default: false
    */
   assumeValid?: boolean;
+
+  /**
+   *
+   * EXPERIMENTAL:
+   *
+   * If enabled, processed fields from fragment spreads with @defer directive
+   * are not returned from the initial query and the respective data is returned
+   * in patches after the initial result from the synchronous query.
+   *
+   * Default: false
+   */
+  experimentalDefer?: boolean;
 }
 
 export interface GraphQLSchemaConfig extends GraphQLSchemaValidationOptions {

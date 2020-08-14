@@ -156,11 +156,11 @@ function subscribeImpl(
   return sourcePromise.then((resultOrStream) =>
     // Note: Flow can't refine isAsyncIterable, so explicit casts are used.
     isAsyncIterable(resultOrStream)
-      ? mapAsyncIterator(
+      ? ((mapAsyncIterator(
           resultOrStream,
           mapSourceToResponse,
           reportGraphQLError,
-        )
+        ): any): AsyncIterator<ExecutionResult>)
       : ((resultOrStream: any): ExecutionResult),
   );
 }
@@ -233,11 +233,12 @@ function executeSubscription(
 ): Promise<AsyncIterable<mixed>> {
   const { schema, operation, variableValues, rootValue } = exeContext;
   const type = getOperationRootType(schema, operation);
-  const fields = collectFields(
+  const { fields } = collectFields(
     exeContext,
     type,
     operation.selectionSet,
     Object.create(null),
+    [],
     Object.create(null),
   );
   const responseNames = Object.keys(fields);

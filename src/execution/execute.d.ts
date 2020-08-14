@@ -44,6 +44,7 @@ export interface ExecutionContext {
  *
  *   - `errors` is included when any errors occurred as a non-empty array.
  *   - `data` is the result of a successful execution of the query.
+ *   - `hasNext` is true if a future payload is expected.
  *   - `extensions` is reserved for adding non-standard properties.
  */
 export interface ExecutionResult<
@@ -53,6 +54,7 @@ export interface ExecutionResult<
   errors?: ReadonlyArray<GraphQLError>;
   // TS_SPECIFIC: TData. Motivation: https://github.com/graphql/graphql-js/pull/2490#issuecomment-639154229
   data?: TData | null;
+  hasNext?: boolean;
   extensions?: TExtensions;
 }
 
@@ -65,6 +67,30 @@ export interface FormattedExecutionResult<
   data?: TData | null;
   extensions?: TExtensions;
 }
+
+/**
+ * The result of an asynchronous GraphQL patch.
+ *
+ *   - `errors` is included when any errors occurred as a non-empty array.
+ *   - `data` is the result of the additional asynchronous data.
+ *   - `path` is the location of data.
+ *   - `hasNext` is true if a future payload is expected.
+ *   - `label` is the label provided to @defer or @stream.
+ *   - `extensions` is reserved for adding non-standard properties.
+ */
+export interface ExecutionPatchResult<
+  TData = { [key: string]: any },
+  TExtensions = { [key: string]: any }
+> {
+  errors?: ReadonlyArray<GraphQLError>;
+  data?: TData | null;
+  path?: ReadonlyArray<string | number>;
+  label?: string;
+  hasNext: boolean;
+  extensions?: TExtensions;
+}
+
+export type AsyncExecutionResult = ExecutionResult | ExecutionPatchResult;
 
 export interface ExecutionArgs {
   schema: GraphQLSchema;

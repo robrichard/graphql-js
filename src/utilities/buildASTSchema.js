@@ -10,7 +10,7 @@ import { assertValidSDL } from '../validation/validate';
 
 import type { GraphQLSchemaValidationOptions } from '../type/schema';
 import { GraphQLSchema } from '../type/schema';
-import { specifiedDirectives } from '../type/directives';
+import { specifiedDirectives, GraphQLDeferDirective } from '../type/directives';
 
 import { extendSchemaImpl } from './extendSchema';
 
@@ -101,6 +101,14 @@ export function buildASTSchema(
     }
   }
 
+  if (
+    options &&
+    options.experimentalDefer === true &&
+    !directives.some((directive) => directive.name === 'defer')
+  ) {
+    directives.push(GraphQLDeferDirective);
+  }
+
   return new GraphQLSchema(config);
 }
 
@@ -124,5 +132,6 @@ export function buildSchema(
     commentDescriptions: options?.commentDescriptions,
     assumeValidSDL: options?.assumeValidSDL,
     assumeValid: options?.assumeValid,
+    experimentalDefer: options?.experimentalDefer,
   });
 }
