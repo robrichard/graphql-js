@@ -178,8 +178,8 @@ export function execute(
   /* eslint-enable no-redeclare */
   // Extract arguments from object args if provided.
   return arguments.length === 1
-    ? executeImpl(argsOrSchema)
-    : executeImpl({
+    ? executeSyncOrPromise(argsOrSchema)
+    : executeSyncOrPromise({
         schema: argsOrSchema,
         document,
         rootValue,
@@ -207,7 +207,30 @@ export function executeSync(args: ExecutionArgs): ExecutionResult {
   return result;
 }
 
-function executeImpl(args: ExecutionArgs): PromiseOrValue<ExecutionResult> {
+/**
+ * Similar to executeSync, but also allows results that are a promise.
+ * Throws if executeImpl returns an AsyncIterable, which is an experimental
+ * feature.
+ */
+
+function executeSyncOrPromise(
+  args: ExecutionArgs,
+): PromiseOrValue<ExecutionResult> {
+  const result = executeImpl(args);
+
+  // Assert that the execution was synchronous.
+  if (isAsyncIterable(result)) {
+    throw new Error(
+      'AsyncIterable GraphQL execution requires use of experimental APIs.',
+    );
+  }
+
+  return result;
+}
+
+export function executeImpl(
+  args: ExecutionArgs,
+): PromiseOrValue<ExecutionResult> {
   const {
     schema,
     document,
