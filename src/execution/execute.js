@@ -390,8 +390,22 @@ function executeOperation(
   try {
     const result =
       operation.operation === 'mutation'
-        ? executeFieldsSerially(exeContext, type, rootValue, path, fields)
-        : executeFields(exeContext, type, rootValue, path, fields);
+        ? executeFieldsSerially(
+            exeContext,
+            type,
+            rootValue,
+            path,
+            fields,
+            exeContext.errors,
+          )
+        : executeFields(
+            exeContext,
+            type,
+            rootValue,
+            path,
+            fields,
+            exeContext.errors,
+          );
     if (isPromise(result)) {
       return result.then(undefined, (error) => {
         exeContext.errors.push(error);
@@ -415,6 +429,7 @@ function executeFieldsSerially(
   sourceValue: mixed,
   path: Path | void,
   fields: ObjMap<Array<FieldNode>>,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<ObjMap<mixed>> {
   return promiseReduce(
     Object.keys(fields),
@@ -427,6 +442,7 @@ function executeFieldsSerially(
         sourceValue,
         fieldNodes,
         fieldPath,
+        errors,
       );
       if (result === undefined) {
         return results;
@@ -454,6 +470,7 @@ function executeFields(
   sourceValue: mixed,
   path: Path | void,
   fields: ObjMap<Array<FieldNode>>,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<ObjMap<mixed>> {
   const results = Object.create(null);
   let containsPromise = false;
@@ -467,6 +484,7 @@ function executeFields(
       sourceValue,
       fieldNodes,
       fieldPath,
+      errors,
     );
 
     if (result !== undefined) {
@@ -633,6 +651,7 @@ function resolveField(
   source: mixed,
   fieldNodes: $ReadOnlyArray<FieldNode>,
   path: Path,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<mixed> {
   const fieldNode = fieldNodes[0];
   const fieldName = fieldNode.name.value;
@@ -674,7 +693,15 @@ function resolveField(
     let completed;
     if (isPromise(result)) {
       completed = result.then((resolved) =>
-        completeValue(exeContext, returnType, fieldNodes, info, path, resolved),
+        completeValue(
+          exeContext,
+          returnType,
+          fieldNodes,
+          info,
+          path,
+          resolved,
+          errors,
+        ),
       );
     } else {
       completed = completeValue(
@@ -684,6 +711,7 @@ function resolveField(
         info,
         path,
         result,
+        errors,
       );
     }
 
@@ -692,13 +720,13 @@ function resolveField(
       // to take a second callback for the error case.
       return completed.then(undefined, (rawError) => {
         const error = locatedError(rawError, fieldNodes, pathToArray(path));
-        return handleFieldError(error, returnType, exeContext);
+        return handleFieldError(error, returnType, errors);
       });
     }
     return completed;
   } catch (rawError) {
     const error = locatedError(rawError, fieldNodes, pathToArray(path));
-    return handleFieldError(error, returnType, exeContext);
+    return handleFieldError(error, returnType, errors);
   }
 }
 
@@ -731,7 +759,7 @@ export function buildResolveInfo(
 function handleFieldError(
   error: GraphQLError,
   returnType: GraphQLOutputType,
-  exeContext: ExecutionContext,
+  errors: Array<GraphQLError>,
 ): null {
   // If the field type is non-nullable, then it is resolved without any
   // protection from errors, however it still properly locates the error.
@@ -741,7 +769,7 @@ function handleFieldError(
 
   // Otherwise, error protection is applied, logging the error and resolving
   // a null value for this field if one is encountered.
-  exeContext.errors.push(error);
+  errors.push(error);
   return null;
 }
 
@@ -773,6 +801,7 @@ function completeValue(
   info: GraphQLResolveInfo,
   path: Path,
   result: mixed,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<mixed> {
   // If result is an Error, throw a located error.
   if (result instanceof Error) {
@@ -789,6 +818,7 @@ function completeValue(
       info,
       path,
       result,
+      errors,
     );
     if (completed === null) {
       throw new Error(
@@ -812,6 +842,7 @@ function completeValue(
       info,
       path,
       result,
+      errors,
     );
   }
 
@@ -831,6 +862,7 @@ function completeValue(
       info,
       path,
       result,
+      errors,
     );
   }
 
@@ -844,6 +876,7 @@ function completeValue(
       info,
       path,
       result,
+      errors,
     );
   }
 
@@ -866,6 +899,7 @@ function completeListValue(
   info: GraphQLResolveInfo,
   path: Path,
   result: mixed,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<$ReadOnlyArray<mixed>> {
   if (!isCollection(result)) {
     throw new GraphQLError(
@@ -892,6 +926,7 @@ function completeListValue(
             info,
             itemPath,
             resolved,
+            errors,
           ),
         );
       } else {
@@ -902,6 +937,7 @@ function completeListValue(
           info,
           itemPath,
           item,
+          errors,
         );
       }
 
@@ -915,13 +951,13 @@ function completeListValue(
             fieldNodes,
             pathToArray(itemPath),
           );
-          return handleFieldError(error, itemType, exeContext);
+          return handleFieldError(error, itemType, errors);
         });
       }
       return completedItem;
     } catch (rawError) {
       const error = locatedError(rawError, fieldNodes, pathToArray(itemPath));
-      return handleFieldError(error, itemType, exeContext);
+      return handleFieldError(error, itemType, errors);
     }
   });
 
@@ -954,6 +990,7 @@ function completeAbstractValue(
   info: GraphQLResolveInfo,
   path: Path,
   result: mixed,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<ObjMap<mixed>> {
   const resolveTypeFn = returnType.resolveType ?? exeContext.typeResolver;
   const contextValue = exeContext.contextValue;
@@ -975,6 +1012,7 @@ function completeAbstractValue(
         info,
         path,
         result,
+        errors,
       ),
     );
   }
@@ -993,6 +1031,7 @@ function completeAbstractValue(
     info,
     path,
     result,
+    errors,
   );
 }
 
@@ -1058,6 +1097,7 @@ function completeObjectValue(
   info: GraphQLResolveInfo,
   path: Path,
   result: mixed,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<ObjMap<mixed>> {
   // If there is an isTypeOf predicate function, call it with the
   // current result. If isTypeOf returns false, then raise an error rather
@@ -1076,6 +1116,7 @@ function completeObjectValue(
           fieldNodes,
           path,
           result,
+          errors,
         );
       });
     }
@@ -1091,6 +1132,7 @@ function completeObjectValue(
     fieldNodes,
     path,
     result,
+    errors,
   );
 }
 
@@ -1111,10 +1153,18 @@ function collectAndExecuteSubfields(
   fieldNodes: $ReadOnlyArray<FieldNode>,
   path: Path,
   result: mixed,
+  errors: Array<GraphQLError>,
 ): PromiseOrValue<ObjMap<mixed>> {
   // Collect sub-fields to execute to complete this value.
   const subFieldNodes = collectSubfields(exeContext, returnType, fieldNodes);
-  return executeFields(exeContext, returnType, result, path, subFieldNodes);
+  return executeFields(
+    exeContext,
+    returnType,
+    result,
+    path,
+    subFieldNodes,
+    errors,
+  );
 }
 
 /**
